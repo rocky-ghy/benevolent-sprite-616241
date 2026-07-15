@@ -2305,10 +2305,17 @@ function showPremiumConfirmation(data, fileName) {
 
 async function savePremiumRecordFromModal() {
   try {
+    // Disable button to prevent multiple clicks
+    const button = event?.target;
+    if (button) {
+      button.disabled = true;
+      button.textContent = '⏳ Saving...';
+    }
+    
     // Read values from modal form inputs
-    const reportName = document.getElementById('premiumName')?.value || '';
-    const date = document.getElementById('premiumDate')?.value || '';
-    const lab = document.getElementById('premiumLab')?.value || '';
+    const reportName = document.getElementById('premiumName')?.value || 'Medical Report';
+    const date = document.getElementById('premiumDate')?.value || 'Unknown';
+    const lab = document.getElementById('premiumLab')?.value || 'Unknown';
     const summary = document.getElementById('premiumSummary')?.value || '';
     
     // Parse results from DOM (if they exist)
@@ -2317,38 +2324,44 @@ async function savePremiumRecordFromModal() {
     
     // Build the data object
     const data = {
-      reportName,
-      date,
-      lab,
+      reportName: reportName || 'Medical Report',
+      date: date || 'Unknown',
+      lab: lab || 'Unknown',
       summary,
-      results
+      results,
+      category: 'Lab report'
     };
+    
+    // CLOSE extraction modal FIRST (before alerts)
+    const extractionModals = Array.from(document.querySelectorAll('.detail-overlay'));
+    extractionModals.forEach(m => {
+      if (m.querySelector('[id="premiumName"]')) {
+        m.remove();
+      }
+    });
     
     // Call the save function with the object
     await savePremiumRecord(data);
   } catch (e) {
     console.error('Error reading form:', e);
-    alert('Error: Could not save record. ' + e.message);
+    showError('Error: Could not save record. ' + e.message);
   }
 }
 
 async function savePremiumRecord(data) {
   try {
-    data.reportName = document.getElementById('premiumName').value || data.reportName;
-    data.lab = document.getElementById('premiumLab').value || data.lab;
-    data.date = document.getElementById('premiumDate').value || data.date;
-    data.summary = document.getElementById('premiumSummary').value || data.summary;
+    // Use data passed in, don't try to read from DOM (modal already closed)
     data.addedOn = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
     
     // Add to vault
     const record = {
-      report_name: data.reportName,
-      lab: data.lab,
-      date: data.date,
+      report_name: data.reportName || 'Medical Report',
+      lab: data.lab || 'Unknown',
+      date: data.date || 'Unknown',
       category: data.category || 'Lab report',
       template_key: 'premium_ai_upload',
-      results: data.results,
-      summary: data.summary,
+      results: data.results || [],
+      summary: data.summary || '',
       added_on: data.addedOn,
       user_id: CURRENT_USER.id
     };
@@ -2357,7 +2370,6 @@ async function savePremiumRecord(data) {
     if (error) throw error;
     
     vault.push(saved[0]);
-    document.querySelector('.detail-overlay').remove();
     
     showToast('✅ Record saved!', 'success');
     
@@ -2365,13 +2377,21 @@ async function savePremiumRecord(data) {
     await showPremiumAlerts(saved[0]);
     
     // PREMIUM: Generate trends
-    showToast('📊 Generating trends…', 'info');
+    showToast('📊 Analysis complete!', 'info');
     
-    showView('records', document.querySelectorAll('.nav-btn')[2]);
   } catch (err) {
     console.error('Save error:', err);
-    showError('Failed to save');
+    showError('Failed to save record: ' + err.message);
   }
+}
+
+function closeAlertsModal() {
+  // Remove all detail-overlay modals (alerts)
+  const modals = document.querySelectorAll('.detail-overlay');
+  modals.forEach(m => m.remove());
+  
+  // Navigate to My Records
+  showView('records', document.querySelectorAll('.nav-btn')[2]);
 }
 
 // PREMIUM ALERTS
@@ -2415,7 +2435,7 @@ async function showPremiumAlerts(record) {
     <div class="detail-card" style="max-width:480px">
       <div style="font-weight:700;font-size:16px;margin-bottom:14px;color:#e67e22">⚠️ Premium Alerts</div>
       ${alertsHtml}
-      <button class="btn-green" onclick="this.closest('.detail-overlay').remove()" style="width:100%;margin-top:14px">Got It</button>
+      <button class="btn-green" onclick="closeAlertsModal()" style="width:100%;margin-top:14px">Got It</button>
     </div>
   `;
   
