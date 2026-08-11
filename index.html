@@ -2350,35 +2350,41 @@ async function savePremiumRecordFromModal() {
 
 async function savePremiumRecord(data) {
   try {
-    // Use data passed in, don't try to read from DOM (modal already closed)
-    data.addedOn = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-    
-    // Add to vault
+    // Build the record in the app's standard camelCase shape — the same
+    // shape every other save path (manual entry, templates, quick add,
+    // handleFileUpload) uses. Pushing a raw snake_case DB row here was
+    // the bug: it looked "saved" (toast fired) but rendered blank/undefined
+    // because recordCard/openDetail/Dashboard all read camelCase fields.
     const record = {
-      report_name: data.reportName || 'Medical Report',
+      reportName: data.reportName || 'Medical Report',
       lab: data.lab || 'Unknown',
       date: data.date || 'Unknown',
       category: data.category || 'Lab report',
-      template_key: 'premium_ai_upload',
+      templateKey: 'premium_ai_upload',
       results: data.results || [],
       summary: data.summary || '',
-      added_on: data.addedOn,
-      user_id: CURRENT_USER.id
+      addedOn: new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
     };
-    
-    const { data: saved, error } = await sb.from('vault_records').insert([record]).select();
-    if (error) throw error;
-    
-    vault.push(saved[0]);
-    
+
+    // addRecordToVault: unshifts to the front (newest-first, matching every
+    // other view's assumption), saves to Supabase with correct snake_case
+    // mapping, attaches the returned id, and refreshes the dashboard.
+    await addRecordToVault(record);
+
     showToast('✅ Record saved!', 'success');
-    
+
     // PREMIUM: Show alerts
-    await showPremiumAlerts(saved[0]);
-    
+    await showPremiumAlerts(record);
+
     // PREMIUM: Generate trends
     showToast('📊 Analysis complete!', 'info');
-    
+
+    // Make sure whatever view the user is looking at actually reflects
+    // the new record — updateDashboard() alone doesn't refresh the
+    // records list if that's the screen they're on.
+    renderAllRecords();
+    buildTemplateGrid();
+
   } catch (err) {
     console.error('Save error:', err);
     showError('Failed to save record: ' + err.message);
@@ -4719,13 +4725,19 @@ ${medSummary}`;
   }
 
   try {
-    const response = await callClaude(q, systemPrompt);
+    // Capped below the 4096 default too — this also sends the full vault
+    // as context and can run long enough to risk the 30s function timeout.
+    const response = await callClaude(q, systemPrompt, { maxTokens: 3000 });
+    const responseText = withTruncationNotice(response);
     document.getElementById('thinkingMsg').remove();
-    hist.innerHTML += `<div class="msg msg-ai">${response.replace(/\n/g,'<br>')}</div>`;
+    hist.innerHTML += `<div class="msg msg-ai">${escapeHtml(responseText).replace(/\n/g,'<br>')}</div>`;
     hist.scrollTop = hist.scrollHeight;
-    
+    if (response.truncated) {
+      showToast('⚠️ That answer was cut short — try again', 'warning');
+    }
+
     // Update health model with this interaction
-    await updateHealthImprint(q, response);
+    await updateHealthImprint(q, responseText);
   } catch(e) {
     document.getElementById('thinkingMsg').remove();
     hist.innerHTML += `<div class="msg msg-ai">Sorry, something went wrong. Please check your API key and try again.</div>`;
@@ -4735,43 +4747,127 @@ ${medSummary}`;
 // ─────────────────────────────────────────
 // CLAUDE API
 // ─────────────────────────────────────────
-async function callClaude(userMessage, systemPrompt = '') {
+function escapeHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+// Streaming variant of callClaude — talks to the Edge Function at
+// /api/claude-extract-stream instead of the standard Function. Use this
+// for calls that risk running past Netlify's 30-second standard-function
+// timeout (Generate Insights is the main one). Reads newline-delimited
+// JSON chunks as Claude generates them, so total generation time isn't
+// capped by a single request/response wall-clock limit.
+//
+// onDelta(text) is called for each incoming chunk (optional — pass null
+// to just wait for the full result). Returns the same String-like object
+// shape as callClaude(), with .truncated / .stopReason set at the end.
+async function callClaudeStream(userMessage, systemPrompt = '', options = {}) {
   const prompt = systemPrompt ? `${systemPrompt}\n\n${userMessage}` : userMessage;
-  
-  // Netlify function URL (same domain, no CORS issues)
-  // Add timestamp to bust cache
-  const NETLIFY_FUNCTION_URL = `/.netlify/functions/claude-extract?t=${Date.now()}`;
-  
-  try {
-    console.log('📡 Calling Netlify Function for Claude...');
-    console.log('   URL:', NETLIFY_FUNCTION_URL);
-    
-    const res = await fetch(NETLIFY_FUNCTION_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        prompt: prompt,
-        apiKey: API_KEY
-      })
-    });
-    
-    console.log('📨 Response status:', res.status);
-    
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error('❌ Function error:', res.status, errText);
-      throw new Error(`Function failed: ${res.status}`);
-    }
-    
-    const data = await res.json();
-    console.log('✅ Claude response received');
-    return data?.data || '';
-  } catch (e) {
-    console.error('🔥 Claude error:', e.message);
-    throw e;
+  const maxTokens = options.maxTokens || 4096;
+  const onDelta = options.onDelta || null;
+
+  const res = await fetch('/api/claude-extract-stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, apiKey: API_KEY, maxTokens })
+  });
+
+  if (!res.ok || !res.body) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`Stream failed: ${res.status}${errText ? ' — ' + errText : ''}`);
   }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let fullText = '';
+  let stopReason = null;
+  let streamError = null;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      let evt;
+      try { evt = JSON.parse(line); } catch (e) { continue; }
+
+      if (evt.type === 'delta') {
+        fullText += evt.text;
+        if (onDelta) onDelta(evt.text, fullText);
+      } else if (evt.type === 'done') {
+        stopReason = evt.stopReason;
+      } else if (evt.type === 'error') {
+        streamError = evt.message;
+      }
+    }
+  }
+
+  if (streamError && !fullText) {
+    throw new Error(streamError);
+  }
+
+  const result = new String(fullText);
+  result.stopReason = stopReason;
+  result.truncated = stopReason === 'max_tokens';
+  return result;
+}
+
+async function callClaude(userMessage, systemPrompt = '', options = {}) {
+  const prompt = systemPrompt ? `${systemPrompt}\n\n${userMessage}` : userMessage;
+  const maxTokens = options.maxTokens || 4096;
+
+  // Netlify function URL (same domain, no CORS issues)
+  const NETLIFY_FUNCTION_URL = `/.netlify/functions/claude-extract`;
+
+  const res = await fetch(NETLIFY_FUNCTION_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      prompt: prompt,
+      apiKey: API_KEY,
+      maxTokens: maxTokens
+    })
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`Function failed: ${res.status}${errText ? ' — ' + errText : ''}`);
+  }
+
+  const data = await res.json();
+  const text = data?.data || '';
+  const stopReason = data?.stopReason || null;
+
+  // Return an object so callers can check truncation, but keep it usable
+  // as a plain string wherever old code does `response.split(...)` etc.
+  const result = new String(text);
+  result.stopReason = stopReason;
+  result.truncated = stopReason === 'max_tokens';
+  return result;
+}
+
+// Appends a visible warning if a Claude response was cut off by the token
+// limit, so a truncated report is never mistaken for a complete one.
+function withTruncationNotice(response) {
+  const text = response.toString();
+  if (response.truncated) {
+    return text + '\n\n⚠️ **This response was cut short and may be incomplete.** Try again — SantaVe will request more room for a full answer next time.';
+  }
+  return text;
 }
 
 // ─────────────────────────────────────────
@@ -5735,24 +5831,49 @@ Provide insights under these headings:
 
 Keep it concise (2-3 sentences per section), evidence-based (cite actual test values), and actionable. Avoid medical advice — focus on data patterns.`;
 
-    const response = await callClaude(prompt);
-    
-    // Remove the "analyzing..." message and add the real response
+    // NOTE: capped lower than other AI calls (2200 vs 4096) as a stopgap
+    // against Netlify's 30-second standard-function timeout — this prompt
+    // sends the most context and asks for the longest structured response,
+    // so it's the one most likely to time out (502) rather than truncate.
+    // See callClaudeStream() below for the durable fix.
+    // Streamed via the Edge Function — Generate Insights sends the most
+    // context and asks for the longest response, so it's the one most
+    // likely to exceed Netlify's 30-second standard-function timeout.
+    // Streaming removes that ceiling: text renders live as it generates
+    // instead of the browser waiting for one big response.
     const msgs = queryHistory.querySelectorAll('.msg');
     if (msgs.length > 0) {
       msgs[msgs.length - 1].remove();
     }
-    
-    queryHistory.innerHTML += `<div class="msg msg-ai">${response.split('\n').map(line => {
+
+    const bubble = document.createElement('div');
+    bubble.className = 'msg msg-ai';
+    queryHistory.appendChild(bubble);
+
+    const renderMarkdownish = (text) => text.split('\n').map(line => {
       if (line.startsWith('**') && line.endsWith('**')) {
-        return `<div style="font-weight:600;margin-top:8px;margin-bottom:4px;color:var(--green-dark)">${line.replace(/\*\*/g,'')}</div>`;
+        return `<div style="font-weight:600;margin-top:8px;margin-bottom:4px;color:var(--green-dark)">${escapeHtml(line.replace(/\*\*/g,''))}</div>`;
       }
-      return line ? `<div>${line}</div>` : '';
-    }).join('')}</div>`;
-    
+      return line ? `<div>${escapeHtml(line)}</div>` : '';
+    }).join('');
+
+    const response = await callClaudeStream(prompt, '', {
+      maxTokens: 4096,
+      onDelta: (_chunk, fullTextSoFar) => {
+        bubble.innerHTML = renderMarkdownish(fullTextSoFar);
+        queryHistory.scrollTop = queryHistory.scrollHeight;
+      }
+    });
+    const responseText = withTruncationNotice(response);
+    bubble.innerHTML = renderMarkdownish(responseText);
+
+    if (response.truncated) {
+      showToast('⚠️ Insight summary was cut short — try again', 'warning');
+    }
+
     queryHistory.scrollTop = queryHistory.scrollHeight;
   } catch(err) {
-    queryHistory.innerHTML += `<div class="msg msg-ai"><em>⚠️ Error: ${err.message}</em></div>`;
+    queryHistory.innerHTML += `<div class="msg msg-ai"><em>⚠️ Error: ${escapeHtml(err.message)}</em></div>`;
     queryHistory.scrollTop = queryHistory.scrollHeight;
   }
 }
