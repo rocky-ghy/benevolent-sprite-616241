@@ -3,15 +3,27 @@ export default async (req, context) => {
     return new Response("Method not allowed", { status: 405 });
   }
 
-  try {
-    const { prompt, apiKey } = await req.json();
+  const corsHeaders = {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*"
+  };
 
+  const DEFAULT_MAX_TOKENS = 4096;
+  const HARD_MAX_TOKENS = 8192; // safety ceiling regardless of what the client asks for
+
+  try {
+    const { prompt, apiKey, maxTokens } = await req.json();
     if (!prompt || !apiKey) {
       return new Response(
         JSON.stringify({ error: "Missing prompt or apiKey" }),
-        { status: 400, headers: { "Content-Type": "application/json" } }
+        { status: 400, headers: corsHeaders }
       );
     }
+
+    const requestedMaxTokens = Math.min(
+      parseInt(maxTokens, 10) || DEFAULT_MAX_TOKENS,
+      HARD_MAX_TOKENS
+    );
 
     // Call Claude API directly (no SDK dependency needed)
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -23,7 +35,7 @@ export default async (req, context) => {
       },
       body: JSON.stringify({
         model: "claude-opus-4-6",
-        max_tokens: 1024,
+        max_tokens: requestedMaxTokens,
         messages: [
           {
             role: "user",
@@ -40,20 +52,24 @@ export default async (req, context) => {
           error: "Claude API error",
           details: error.error?.message || "Unknown error"
         }),
-        { status: response.status, headers: { "Content-Type": "application/json" } }
+        { status: response.status, headers: corsHeaders }
       );
     }
 
     const data = await response.json();
-    const text = data.content[0]?.type === "text" ? data.content[0].text : "";
+    const text = (data.content || [])
+      .filter((block) => block.type === "text")
+      .map((block) => block.text)
+      .join("\n");
 
-    return new Response(JSON.stringify({ success: true, data: text }), {
-      status: 200,
-      headers: {
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*"
-      }
-    });
+    return new Response(
+      JSON.stringify({
+        success: true,
+        data: text,
+        stopReason: data.stop_reason || null // "end_turn" | "max_tokens" | "stop_sequence" | ...
+      }),
+      { status: 200, headers: corsHeaders }
+    );
   } catch (error) {
     console.error("Function error:", error);
     return new Response(
@@ -61,7 +77,7 @@ export default async (req, context) => {
         error: "Failed to process request",
         details: error.message
       }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: corsHeaders }
     );
   }
 };
