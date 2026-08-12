@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SantaVe — Design Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --chart-white:#F4F6F4;
+    --paper:#FBFCFA;
+    --ink:#16262B;
+    --ink-soft:#3A4A4D;
+    --teal:#2F6F62;
+    --teal-deep:#1F4B41;
+    --teal-tint:#E4EEEB;
+    --amber:#C97A2E;
+    --amber-tint:#F7E9DA;
+    --slate:#8B9A9C;
+    --line:#DCE3DF;
+    --radius:4px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--chart-white);
+    color:var(--ink);
+    font-family:'IBM Plex Sans',sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  .serif{font-family:'Fraunces',serif}
+  .mono{font-family:'IBM Plex Mono',monospace}
+
+  /* ── preview chrome (not part of the app) ── */
+  .preview-banner{
+    background:var(--ink);color:var(--chart-white);
+    font-size:12px;padding:9px 20px;text-align:center;
+    letter-spacing:.02em;
+  }
+  .preview-banner b{color:#fff}
+  .preview-tabs{
+    display:flex;gap:2px;justify-content:center;
+    background:var(--paper);border-bottom:1px solid var(--line);
+    padding:10px;
+  }
+  .preview-tab{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.06em;
+    text-transform:uppercase;padding:7px 16px;border-radius:20px;
+    border:1px solid transparent;color:var(--slate);cursor:pointer;background:none;
+  }
+  .preview-tab.active{color:var(--teal-deep);border-color:var(--teal);background:var(--teal-tint)}
+  .screen{display:none;max-width:960px;margin:0 auto;padding:0 24px 80px}
+  .screen.active{display:block}
+
+  /* ── shared topbar ── */
+  .topbar{
+    display:flex;align-items:center;gap:28px;
+    padding:22px 0;border-bottom:1px solid var(--line);margin-bottom:36px;
+  }
+  .wordmark{font-family:'Fraunces',serif;font-weight:600;font-size:20px;letter-spacing:-.01em}
+  .wordmark .dot{color:var(--teal);font-size:20px}
+  .topnav{display:flex;gap:26px;margin-left:auto}
+  .topnav a{
+    font-size:13px;color:var(--slate);text-decoration:none;
+    padding-bottom:4px;border-bottom:1.5px solid transparent;
+  }
+  .topnav a.active{color:var(--ink);border-color:var(--teal)}
+  .avatar{
+    width:30px;height:30px;border-radius:50%;background:var(--teal-tint);
+    color:var(--teal-deep);font-size:11px;font-weight:600;
+    display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;
+  }
+
+  /* ── dashboard ── */
+  .welcome-eyebrow{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--teal)}
+  .welcome-title{font-family:'Fraunces',serif;font-style:italic;font-weight:500;font-size:34px;margin-top:6px;letter-spacing:-.01em}
+  .welcome-sub{color:var(--slate);font-size:13.5px;margin-top:6px}
+
+  .ledger-row{
+    display:grid;grid-template-columns:repeat(4,1fr);
+    border:1px solid var(--line);border-radius:var(--radius);
+    margin:32px 0 40px;background:var(--paper);overflow:hidden;
+  }
+  .ledger-cell{padding:18px 20px;border-right:1px solid var(--line)}
+  .ledger-cell:last-child{border-right:none}
+  .ledger-label{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--slate)}
+  .ledger-value{font-family:'Fraunces',serif;font-size:26px;font-weight:500;margin-top:6px}
+  .ledger-value.small{font-size:16px}
+  .ledger-sub{font-size:11.5px;color:var(--slate);margin-top:3px}
+
+  .section-head{
+    display:flex;align-items:baseline;justify-content:space-between;
+    margin-bottom:16px;
+  }
+  .section-title{font-family:'Fraunces',serif;font-size:16px;font-weight:600}
+  .section-link{font-size:12px;color:var(--teal-deep);text-decoration:none;border-bottom:1px solid var(--teal)}
+
+  /* ── timeline / records ── */
+  .timeline{position:relative;padding-left:36px;margin-top:8px}
+  .timeline::before{
+    content:'';position:absolute;left:9px;top:6px;bottom:6px;width:2px;
+    background:var(--line);
+  }
+  .year-marker{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.08em;
+    color:var(--slate);margin:28px 0 14px;position:relative;
+  }
+  .year-marker:first-child{margin-top:0}
+  .entry{position:relative;padding:0 0 22px 20px}
+  .entry::before{
+    content:'';position:absolute;left:-31px;top:5px;width:11px;height:11px;
+    border-radius:50%;background:var(--teal);border:2px solid var(--paper);
+    box-shadow:0 0 0 2px var(--teal);
+  }
+  .entry.flagged::before{
+    background:var(--paper);box-shadow:0 0 0 2px var(--amber);
+  }
+  .entry-date{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--slate);margin-bottom:4px}
+  .entry-card{
+    background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);
+    padding:14px 16px;transition:border-color .15s;
+  }
+  .entry-card:hover{border-color:var(--teal)}
+  .entry-title{font-family:'Fraunces',serif;font-weight:500;font-size:15.5px}
+  .entry-meta{font-size:12px;color:var(--slate);margin-top:3px}
+  .entry-flag{
+    display:inline-block;margin-top:8px;font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px;letter-spacing:.04em;padding:2px 8px;border-radius:20px;
+  }
+  .entry-flag.normal{background:var(--teal-tint);color:var(--teal-deep)}
+  .entry-flag.high{background:var(--amber-tint);color:var(--amber)}
+
+  @media (prefers-reduced-motion: reduce){
+    *{transition:none !important}
+  }
+  @media (max-width:640px){
+    .topnav{display:none}
+    .ledger-row{grid-template-columns:1fr 1fr}
+    .ledger-cell:nth-child(2){border-right:none}
+    .ledger-cell{border-bottom:1px solid var(--line)}
+    .welcome-title{font-size:26px}
+  }
+  a:focus-visible,button:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+
+  /* ── health summary ── */
+  .alert-box{
+    background:var(--amber-tint);border:1px solid #e6c8a0;border-radius:var(--radius);
+    padding:16px 18px;margin-bottom:28px;
+  }
+  .alert-box-title{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--amber);margin-bottom:10px;
+  }
+  .alert-row{
+    display:flex;justify-content:space-between;align-items:baseline;
+    padding:7px 0;border-bottom:1px solid rgba(201,122,46,.15);font-size:13.5px;
+  }
+  .alert-row:last-child{border-bottom:none}
+  .alert-row .val{font-family:'IBM Plex Mono',monospace;color:var(--amber)}
+  .system-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:32px}
+  .system-card{background:var(--paper);border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+  .system-card-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:12px}
+  .system-card-name{font-family:'Fraunces',serif;font-weight:600;font-size:14.5px}
+  .system-card-date{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--slate)}
+  .param-row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px}
+  .param-row:last-child{border-bottom:none}
+  .param-row .v{font-family:'IBM Plex Mono',monospace}
+  .param-row.hi .v{color:var(--amber);font-weight:500}
+
+  /* ── ask santave ── */
+  .chat-wrap{border:1px solid var(--line);border-radius:var(--radius);background:var(--paper);overflow:hidden}
+  .chat-history{padding:22px;display:flex;flex-direction:column;gap:16px;min-height:260px}
+  .bubble{max-width:72%;padding:12px 16px;font-size:13.5px;line-height:1.6;border-radius:2px}
+  .bubble.ai{background:var(--chart-white);border:1px solid var(--line);align-self:flex-start}
+  .bubble.user{background:var(--teal);color:#fff;align-self:flex-end}
+  .bubble .lbl{font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;opacity:.65;margin-bottom:4px;display:block}
+  .chat-input-row{border-top:1px solid var(--line);padding:14px 18px;display:flex;gap:10px}
+  .chat-input{
+    flex:1;border:1px solid var(--line);border-radius:2px;padding:10px 12px;
+    font-family:'IBM Plex Sans',sans-serif;font-size:13px;background:var(--chart-white);color:var(--slate);
+  }
+  .chat-send{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.05em;text-transform:uppercase;
+    background:var(--teal);color:#fff;border:none;padding:0 18px;border-radius:2px;cursor:pointer;
+  }
+  .chip-row{display:flex;gap:8px;flex-wrap:wrap;padding:14px 18px 0}
+  .qchip{
+    font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--teal-deep);
+    background:var(--teal-tint);border:1px solid var(--teal-mid,var(--teal));border-radius:20px;padding:5px 12px;
+    cursor:pointer;
+  }
+
+  /* ── medications ── */
+  .med-row{
+    display:flex;align-items:center;gap:16px;padding:16px 0;border-bottom:1px solid var(--line);
+  }
+  .med-row:last-child{border-bottom:none}
+  .med-mark{width:8px;height:8px;border-radius:50%;background:var(--teal);flex-shrink:0}
+  .med-mark.past{background:var(--slate)}
+  .med-info{flex:1}
+  .med-name{font-family:'Fraunces',serif;font-weight:500;font-size:15px}
+  .med-meta{font-size:12px;color:var(--slate);margin-top:2px}
+  .med-tag{
+    font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.05em;text-transform:uppercase;
+    padding:3px 10px;border-radius:20px;background:var(--teal-tint);color:var(--teal-deep);
+  }
+  .med-tag.past{background:var(--line);color:var(--slate)}
+</style>
+</head>
+<body>
+
+<div class="preview-banner"><b>Design preview</b> — static mockup, not wired to the live app. Toggle screens below.</div>
+<div class="preview-tabs">
+  <button class="preview-tab active" onclick="showScreen('dashboard',this)">Dashboard</button>
+  <button class="preview-tab" onclick="showScreen('timeline',this)">Records — Timeline</button>
+  <button class="preview-tab" onclick="showScreen('summary',this)">Health Summary</button>
+  <button class="preview-tab" onclick="showScreen('meds',this)">Medications</button>
+  <button class="preview-tab" onclick="showScreen('ask',this)">Ask SantaVe</button>
+</div>
+
+<!-- DASHBOARD -->
+<div class="screen active" id="screen-dashboard">
+  <div class="topbar">
+    <div class="wordmark">Santa<span class="dot">·</span>Ve</div>
+    <nav class="topnav">
+      <a href="#" class="active">Dashboard</a>
+      <a href="#">Health Summary</a>
+      <a href="#">Records</a>
+      <a href="#">Trends</a>
+      <a href="#">Ask SantaVe</a>
+    </nav>
+    <div class="avatar">RS</div>
+  </div>
+
+  <div class="welcome-eyebrow">Good morning</div>
+  <div class="welcome-title">Rocky</div>
+  <div class="welcome-sub">37 records across 6 categories · vault last updated 2 days ago</div>
+
+  <div class="ledger-row">
+    <div class="ledger-cell">
+      <div class="ledger-label">Records</div>
+      <div class="ledger-value">37</div>
+      <div class="ledger-sub">in your vault</div>
+    </div>
+    <div class="ledger-cell">
+      <div class="ledger-label">Latest entry</div>
+      <div class="ledger-value small">Thyroid Panel</div>
+      <div class="ledger-sub">2 days ago</div>
+    </div>
+    <div class="ledger-cell">
+      <div class="ledger-label">Medications</div>
+      <div class="ledger-value">2</div>
+      <div class="ledger-sub">active</div>
+    </div>
+    <div class="ledger-cell">
+      <div class="ledger-label">Insight mode</div>
+      <div class="ledger-value small">On</div>
+      <div class="ledger-sub">pattern reading enabled</div>
+    </div>
+  </div>
+
+  <div class="section-head">
+    <div class="section-title">Recent records</div>
+    <a href="#" class="section-link" onclick="showScreen('timeline',document.querySelectorAll('.preview-tab')[1]);return false;">View timeline →</a>
+  </div>
+
+  <div class="timeline">
+    <div class="entry flagged">
+      <div class="entry-date">04 JUL 2026</div>
+      <div class="entry-card">
+        <div class="entry-title">Thyroid Function (TFT)</div>
+        <div class="entry-meta">Apollo Diagnostics</div>
+        <span class="entry-flag high">3 values flagged</span>
+      </div>
+    </div>
+    <div class="entry">
+      <div class="entry-date">28 JUN 2026</div>
+      <div class="entry-card">
+        <div class="entry-title">Vitamin D3 (25-OH)</div>
+        <div class="entry-meta">Thyrocare</div>
+        <span class="entry-flag normal">Within range</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TIMELINE / RECORDS -->
+<div class="screen" id="screen-timeline">
+  <div class="topbar">
+    <div class="wordmark">Santa<span class="dot">·</span>Ve</div>
+    <nav class="topnav">
+      <a href="#">Dashboard</a>
+      <a href="#">Health Summary</a>
+      <a href="#" class="active">Records</a>
+      <a href="#">Trends</a>
+      <a href="#">Ask SantaVe</a>
+    </nav>
+    <div class="avatar">RS</div>
+  </div>
+
+  <div class="section-head">
+    <div class="section-title" style="font-size:18px">Your record, continuously</div>
+  </div>
+
+  <div class="timeline">
+    <div class="year-marker">2026</div>
+    <div class="entry flagged">
+      <div class="entry-date">04 JUL</div>
+      <div class="entry-card">
+        <div class="entry-title">Thyroid Function (TFT)</div>
+        <div class="entry-meta">Apollo Diagnostics · TSH 0.018 · Free T3 6.25 · Free T4 2.91</div>
+        <span class="entry-flag high">Review</span>
+      </div>
+    </div>
+    <div class="entry flagged">
+      <div class="entry-date">04 JUL</div>
+      <div class="entry-card">
+        <div class="entry-title">Complete Blood Count</div>
+        <div class="entry-meta">Apollo Diagnostics · Hemoglobin 9.4 · ESR 53</div>
+        <span class="entry-flag high">Review</span>
+      </div>
+    </div>
+    <div class="entry">
+      <div class="entry-date">28 JUN</div>
+      <div class="entry-card">
+        <div class="entry-title">Vitamin D3 (25-OH)</div>
+        <div class="entry-meta">Thyrocare · 42 ng/mL</div>
+        <span class="entry-flag normal">Normal</span>
+      </div>
+    </div>
+    <div class="year-marker">2025</div>
+    <div class="entry">
+      <div class="entry-date">12 NOV</div>
+      <div class="entry-card">
+        <div class="entry-title">Lipid Profile</div>
+        <div class="entry-meta">Dr Lal PathLabs · LDL 96 · HDL 48</div>
+        <span class="entry-flag normal">Normal</span>
+      </div>
+    </div>
+    <div class="entry">
+      <div class="entry-date">03 FEB</div>
+      <div class="entry-card">
+        <div class="entry-title">Annual Check-up — Discharge Summary</div>
+        <div class="entry-meta">City General Hospital</div>
+        <span class="entry-flag normal">Note</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- HEALTH SUMMARY -->
+<div class="screen" id="screen-summary">
+  <div class="topbar">
+    <div class="wordmark">Santa<span class="dot">·</span>Ve</div>
+    <nav class="topnav">
+      <a href="#">Dashboard</a>
+      <a href="#" class="active">Health Summary</a>
+      <a href="#">Records</a>
+      <a href="#">Trends</a>
+      <a href="#">Ask SantaVe</a>
+    </nav>
+    <div class="avatar">RS</div>
+  </div>
+
+  <div class="section-head">
+    <div class="section-title" style="font-size:18px">Your health, at a glance</div>
+  </div>
+
+  <div class="alert-box">
+    <div class="alert-box-title">Values needing attention — 3</div>
+    <div class="alert-row"><span>TSH</span><span class="val">0.018 µIU/mL — Low</span></div>
+    <div class="alert-row"><span>Hemoglobin</span><span class="val">9.4 g/dL — Low</span></div>
+    <div class="alert-row"><span>ESR</span><span class="val">53 mm/hr — High</span></div>
+  </div>
+
+  <div class="system-grid">
+    <div class="system-card">
+      <div class="system-card-head">
+        <span class="system-card-name">Thyroid</span>
+        <span class="system-card-date">04 JUL</span>
+      </div>
+      <div class="param-row hi"><span>TSH</span><span class="v">0.018</span></div>
+      <div class="param-row hi"><span>Free T3</span><span class="v">6.25</span></div>
+      <div class="param-row hi"><span>Free T4</span><span class="v">2.91</span></div>
+    </div>
+    <div class="system-card">
+      <div class="system-card-head">
+        <span class="system-card-name">Blood Count</span>
+        <span class="system-card-date">04 JUL</span>
+      </div>
+      <div class="param-row hi"><span>Hemoglobin</span><span class="v">9.4</span></div>
+      <div class="param-row"><span>Platelets</span><span class="v">1.4L</span></div>
+      <div class="param-row hi"><span>ESR</span><span class="v">53</span></div>
+    </div>
+    <div class="system-card">
+      <div class="system-card-head">
+        <span class="system-card-name">Vitamins</span>
+        <span class="system-card-date">28 JUN</span>
+      </div>
+      <div class="param-row"><span>Vitamin D3</span><span class="v">42</span></div>
+      <div class="param-row"><span>Vitamin B12</span><span class="v">410</span></div>
+    </div>
+    <div class="system-card">
+      <div class="system-card-head">
+        <span class="system-card-name">Blood Sugar</span>
+        <span class="system-card-date">12 NOV</span>
+      </div>
+      <div class="param-row"><span>Fasting</span><span class="v">100</span></div>
+      <div class="param-row"><span>Post-meal</span><span class="v">140</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- MEDICATIONS -->
+<div class="screen" id="screen-meds">
+  <div class="topbar">
+    <div class="wordmark">Santa<span class="dot">·</span>Ve</div>
+    <nav class="topnav">
+      <a href="#">Dashboard</a>
+      <a href="#">Health Summary</a>
+      <a href="#">Records</a>
+      <a href="#">Trends</a>
+      <a href="#" class="active">Ask SantaVe</a>
+    </nav>
+    <div class="avatar">RS</div>
+  </div>
+
+  <div class="section-head">
+    <div class="section-title" style="font-size:18px">Medications</div>
+  </div>
+
+  <div style="border:1px solid var(--line);border-radius:var(--radius);background:var(--paper);padding:4px 20px">
+    <div class="med-row">
+      <div class="med-mark"></div>
+      <div class="med-info">
+        <div class="med-name">Levothyroxine 50mcg</div>
+        <div class="med-meta">Once daily, morning · Dr Mehta · since 05 Jul 2026</div>
+      </div>
+      <span class="med-tag">Active</span>
+    </div>
+    <div class="med-row">
+      <div class="med-mark"></div>
+      <div class="med-info">
+        <div class="med-name">Iron + Folic Acid</div>
+        <div class="med-meta">Once daily, with food · Dr Mehta · since 05 Jul 2026</div>
+      </div>
+      <span class="med-tag">Active</span>
+    </div>
+    <div class="med-row">
+      <div class="med-mark past"></div>
+      <div class="med-info">
+        <div class="med-name">Amoxicillin 500mg</div>
+        <div class="med-meta">Twice daily · City General · Feb – Feb 2025</div>
+      </div>
+      <span class="med-tag past">Completed</span>
+    </div>
+  </div>
+</div>
+
+<!-- ASK SANTAVE -->
+<div class="screen" id="screen-ask">
+  <div class="topbar">
+    <div class="wordmark">Santa<span class="dot">·</span>Ve</div>
+    <nav class="topnav">
+      <a href="#">Dashboard</a>
+      <a href="#">Health Summary</a>
+      <a href="#">Records</a>
+      <a href="#">Trends</a>
+      <a href="#" class="active">Ask SantaVe</a>
+    </nav>
+    <div class="avatar">RS</div>
+  </div>
+
+  <div class="section-head">
+    <div class="section-title" style="font-size:18px">Ask about your record</div>
+  </div>
+
+  <div class="chat-wrap">
+    <div class="chat-history">
+      <div class="bubble ai">
+        <span class="lbl">SantaVe</span>
+        Ask me anything about your records — I'll read from what's in your vault, nothing else.
+      </div>
+      <div class="bubble user">What's my thyroid trend been like this year?</div>
+      <div class="bubble ai">
+        <span class="lbl">SantaVe</span>
+        TSH has moved from 0.4 in January to 0.018 as of your July 4th test — a sharp downward trend, with Free T3 and Free T4 both rising over the same period. Worth flagging to your doctor if not already discussed.
+      </div>
+    </div>
+    <div class="chip-row">
+      <span class="qchip">Flagged values</span>
+      <span class="qchip">Current medications</span>
+      <span class="qchip">Doctor summary</span>
+    </div>
+    <div class="chat-input-row">
+      <div class="chat-input">Ask about your records…</div>
+      <button class="chat-send">Send</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function showScreen(name, btn){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+name).classList.add('active');
+  document.querySelectorAll('.preview-tab').forEach(t=>t.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+}
+</script>
+</body>
+</html>
